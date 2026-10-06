@@ -1,0 +1,53 @@
+name: Release
+
+# Builds the `hulk` binary plus its C runtime and publishes them as a release
+# asset, so other repos can run HULK programs without compiling Rust + LLVM.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17-dev libpolly-17-dev clang-17 \
+            libzstd-dev libxml2-dev libffi-dev zlib1g-dev
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --release --bin hulk
+      - name: Smoke test
+        run: |
+          export OUT_DIR="$(dirname "$(find target/release/build -name libhulkruntime.a | head -n 1)")"
+          cd "$(mktemp -d)"
+          "$GITHUB_WORKSPACE/target/release/hulk" "$GITHUB_WORKSPACE/examples/hello.hulk"
+          test "$(./output)" = "Hello World"
+      - name: Package
+        run: |
+          mkdir -p dist/hulk-linux-x86_64
+          cp target/release/hulk dist/hulk-linux-x86_64/
+          cp "$(find target/release/build -name libhulkruntime.a | head -n 1)" dist/hulk-linux-x86_64/
+          strip dist/hulk-linux-x86_64/hulk
+          tar -C dist -czf hulk-linux-x86_64.tar.gz hulk-linux-x86_64
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --generate-notes
+          gh release upload "$TAG" hulk-linux-x86_64.tar.gz --clobber
