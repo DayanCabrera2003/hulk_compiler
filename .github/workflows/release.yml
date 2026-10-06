@@ -34,7 +34,7 @@ jobs:
         run: cargo build --release --bin hulk
       - name: Smoke test
         run: |
-          export OUT_DIR="$(dirname "$(find target/release/build -name libhulkruntime.a | head -n 1)")"
+          export OUT_DIR="$(dirname "$(find "$GITHUB_WORKSPACE/target/release/build" -name libhulkruntime.a | head -n 1)")"
           cd "$(mktemp -d)"
           "$GITHUB_WORKSPACE/target/release/hulk" "$GITHUB_WORKSPACE/examples/hello.hulk"
           test "$(./output)" = "Hello World"
